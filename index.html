@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centro Médico Fátima</title>
+    <style>
+        :root { --oxford-grey: #2c3e50; --accent: #3498db; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f6; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        header { background-color: var(--oxford-grey); color: white; width: 100%; padding: 1rem 0; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .container { width: 90%; max-width: 800px; margin-top: 20px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { color: var(--oxford-grey); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background-color: var(--accent); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { background-color: #2980b9; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Botanical Wellness Co.</h1>
+</header>
+
+<div class="container" id="login-section">
+    <h2>Inicio de Sesión</h2>
+    <input type="text" id="usuario" placeholder="Usuario">
+    <input type="password" id="password" placeholder="Contraseña">
+    <button onclick="login()">Entrar</button>
+</div>
+
+<div class="container hidden" id="app-section">
+    <h2>Panel Administrativo</h2>
+    <div id="content">
+        <p>Bienvenido al sistema. Seleccione una acción:</p>
+        <button onclick="cargarHabitaciones()">Ver Habitaciones</button>
+        <button onclick="cargarInventario()">Censo de Medicamentos</button>
+    </div>
+</div>
+
+<script>
+    // ESTA ES LA LÍNEA MÁGICA:
+    // Si estás en local usa window.location.origin
+    // Si estás en Render, esto apuntará a tu dirección web automáticamente.
+    const API = window.location.origin;
+
+    async function login() {
+        const u = document.getElementById('usuario').value;
+        const p = document.getElementById('password').value;
+        
+        const res = await fetch(`${API}/login`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({usuario: u, password: p})
+        });
+        
+        if (res.ok) {
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('app-section').classList.remove('hidden');
+        } else {
+            alert("Credenciales incorrectas");
+        }
+    }
+
+    // Funciones adicionales de censo irían aquí...
+</script>
+
+</body>
+</html>
