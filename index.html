@@ -153,6 +153,8 @@
                 <div style="flex: 1;"><label>Edad:</label><input type="text" id="nueva-edad" placeholder="Ej. 35 años"></div>
                 <div style="flex: 2;"><label>Médico Tratante:</label><input type="text" id="nuevo-medico" placeholder="Ej. Dr. García" oninput="capitalizarPrimeraLetra(this)"></div>
             </div>
+            <label>Fecha y Hora (Opcional - por si llegó antes):</label>
+            <input type="datetime-local" id="nueva-fecha" title="Si lo dejas vacío, se registrará el momento actual">
             <button class="btn btn-action" onclick="guardarPaciente()">Guardar y Ocupar</button>
             <button class="btn" onclick="cerrarModal('modal-ingreso')">Cancelar</button>
         </div>
@@ -234,6 +236,21 @@
             <input type="text" id="new-pin-maestro" placeholder="Ej. 1234">
             <button class="btn btn-action" onclick="cambiarPinMaestro()" style="background: #e74c3c;">Guardar Nuevo NIP</button>
             <button class="btn" onclick="cerrarModal('modal-admin')" style="margin-top: 20px;">Cerrar Panel</button>
+        </div>
+    </div>
+
+    <div id="modal-edit-paciente" class="modal-overlay">
+        <div class="glass-3d modal-content" style="max-width: 400px;">
+            <h3 style="color: #008B8B;">✏️ Editar Datos del Paciente</h3>
+            <input type="hidden" id="edit-pac-id">
+            <label>Nombre:</label> <input type="text" id="edit-pac-nom" oninput="capitalizarPrimeraLetra(this)">
+            <div style="display: flex; gap: 10px;">
+                <div style="flex: 1;"><label>Edad:</label><input type="text" id="edit-pac-edad"></div>
+                <div style="flex: 2;"><label>Médico:</label><input type="text" id="edit-pac-medico" oninput="capitalizarPrimeraLetra(this)"></div>
+            </div>
+            <label>Fecha de Ingreso Real:</label> <input type="datetime-local" id="edit-pac-fecha">
+            <button class="btn btn-action" onclick="guardarEdicionPaciente()">Guardar Cambios</button>
+            <button class="btn" onclick="cerrarModal('modal-edit-paciente')">Cancelar</button>
         </div>
     </div>
 
@@ -419,10 +436,14 @@
             const nom = document.getElementById('nuevo-paciente').value;
             const edd = document.getElementById('nueva-edad').value;
             const med = document.getElementById('nuevo-medico').value;
-            if(!nom || !med || !edd) return alert("Ingresa el Nombre, la Edad y el Médico tratante.");
+            let fec = document.getElementById('nueva-fecha').value;
             
-            let exito = await peticionSegura('/ocupar-habitacion', {numero_hab: habActiva, nombre_paciente: nom, edad: edd, medico: med});
-            document.getElementById('nuevo-paciente').value = ""; document.getElementById('nueva-edad').value = ""; document.getElementById('nuevo-medico').value = ""; 
+            if(!nom || !med || !edd) return alert("Ingresa el Nombre, la Edad y el Médico tratante.");
+            if(fec) fec = fec.replace("T", " ") + ":00"; // Da formato de BD
+            
+            let exito = await peticionSegura('/ocupar-habitacion', {numero_hab: habActiva, nombre_paciente: nom, edad: edd, medico: med, fecha_ingreso: fec});
+            
+            document.getElementById('nuevo-paciente').value = ""; document.getElementById('nueva-edad').value = ""; document.getElementById('nuevo-medico').value = ""; document.getElementById('nueva-fecha').value = "";
             cerrarModal('modal-ingreso'); 
             if(exito) cargarHabitaciones(); else alert("Guardado sin internet. Se subirá automáticamente al recuperar conexión.");
         }
@@ -432,7 +453,7 @@
             try {
                 const res = await fetch(`${API}/historial-paciente/${pid}`); const data = await res.json();
                 
-                document.getElementById('exp-nombre').innerText = data.paciente.nombre;
+                document.getElementById('exp-nombre').innerHTML = `${data.paciente.nombre} <button class="btn-edit-small no-print" style="margin-left:10px;" onclick="abrirModalEditarPaciente(${pid}, '${data.paciente.nombre}', '${data.paciente.edad || ''}', '${data.paciente.medico || ''}', '${data.paciente.ingreso}')">✏️ Editar</button>`;
                 document.getElementById('exp-edad').innerText = data.paciente.edad ? `(${data.paciente.edad})` : '';
                 document.getElementById('exp-medico').innerText = data.paciente.medico || '';
                 document.getElementById('exp-fecha').innerText = data.paciente.ingreso;
@@ -526,10 +547,37 @@
         function abrirModal(id) { document.getElementById(id).style.display = 'flex'; }
         function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
 
+        function abrirModalEditarPaciente(id, nombre, edad, medico, ingreso) {
+            document.getElementById('edit-pac-id').value = id;
+            document.getElementById('edit-pac-nom').value = nombre;
+            document.getElementById('edit-pac-edad').value = edad;
+            document.getElementById('edit-pac-medico').value = medico;
+            if(ingreso) { document.getElementById('edit-pac-fecha').value = ingreso.substring(0, 16).replace(" ", "T"); }
+            abrirModal('modal-edit-paciente');
+        }
+
+        async function guardarEdicionPaciente() {
+            const id = document.getElementById('edit-pac-id').value;
+            const nom = document.getElementById('edit-pac-nom').value;
+            const edd = document.getElementById('edit-pac-edad').value;
+            const med = document.getElementById('edit-pac-medico').value;
+            let fec = document.getElementById('edit-pac-fecha').value;
+            
+            if(!nom) return alert("El nombre no puede estar vacío");
+            if(fec) fec = fec.replace("T", " ") + ":00";
+
+            let exito = await peticionSegura('/editar-paciente', {id_paciente: parseInt(id), nombre: nom, edad: edd, medico: med, fecha_ingreso: fec});
+            if(exito) {
+                cerrarModal('modal-edit-paciente');
+                cargarHabitaciones();
+                abrirExpediente(pacActivoId, habActiva);
+            }
+        }
+
         // --- SINCRONIZADOR INVISIBLE EN TIEMPO REAL ---
         setInterval(() => {
             intentarSincronizar();
-            const modales = ['modal-gestion-hab', 'modal-estadisticas', 'modal-ingreso', 'modal-expediente', 'modal-edicion', 'modal-alta', 'modal-admin'];
+            const modales = ['modal-gestion-hab', 'modal-estadisticas', 'modal-ingreso', 'modal-expediente', 'modal-edicion', 'modal-alta', 'modal-admin', 'modal-edit-paciente'];
             let algunModalAbierto = modales.some(id => document.getElementById(id).style.display === 'flex');
             
             if(!algunModalAbierto && document.getElementById('pantalla-principal').style.display === 'block' && colaOffline.length === 0) {
