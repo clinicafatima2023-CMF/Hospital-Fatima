@@ -69,7 +69,8 @@ def inicializar_db():
 inicializar_db()
 
 class LoginReq(BaseModel): usuario: str; password: str
-class OcuparReq(BaseModel): numero_hab: str; nombre_paciente: str; edad: str; medico: str
+class OcuparReq(BaseModel): numero_hab: str; nombre_paciente: str; edad: str; medico: str; fecha_ingreso: str = ""
+class EditPacReq(BaseModel): id_paciente: int; nombre: str; edad: str; medico: str; fecha_ingreso: str = ""
 class MedReq(BaseModel): paciente_id: int; nombre_med: str; presentacion: str; cantidad: float; precio_base: float; registrado_por: str
 class PassReq(BaseModel): usuario_a_cambiar: str; nueva_password: str
 class HabReq(BaseModel): numero: str; tipo: str
@@ -124,13 +125,19 @@ def eliminar_hab(numero: str):
 
 @app.post("/ocupar-habitacion")
 def ocupar(req: OcuparReq):
-    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    fecha = req.fecha_ingreso if req.fecha_ingreso else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db() as client:
         rs = client.execute("INSERT INTO pacientes (nombre, edad, fecha_ingreso, medico) VALUES (?, ?, ?, ?)", [req.nombre_paciente.strip(), req.edad.strip(), fecha, req.medico.strip()])
         pid = rs.last_insert_rowid
         client.execute("UPDATE habitaciones SET estado='OCUPADA', paciente_id=? WHERE numero=?", [pid, req.numero_hab])
     return {"status": "ok"}
 
+@app.post("/editar-paciente")
+def editar_paciente(req: EditPacReq):
+    with get_db() as client:
+        client.execute("UPDATE pacientes SET nombre=?, edad=?, medico=?, fecha_ingreso=? WHERE id=?", 
+                       [req.nombre.strip(), req.edad.strip(), req.medico.strip(), req.fecha_ingreso, req.id_paciente])
+    return {"status": "ok"}
 @app.post("/liberar-habitacion/{numero}")
 def liberar(numero: str):
     with get_db() as client:
