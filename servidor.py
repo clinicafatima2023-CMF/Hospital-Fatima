@@ -19,10 +19,8 @@ app.add_middleware(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Ruta local que usaremos SOLO para subir tu info inicial a la nube
 LOCAL_DB_PATH = os.path.join(BASE_DIR, "farmacia_hospital.db")
 
-# Credenciales seguras cargadas desde Render
 TURSO_URL = os.getenv("TURSO_URL")
 TURSO_TOKEN = os.getenv("TURSO_TOKEN")
 
@@ -76,6 +74,8 @@ class PassReq(BaseModel): usuario_a_cambiar: str; nueva_password: str
 class HabReq(BaseModel): numero: str; tipo: str
 class EditReq(BaseModel): id_consumo: int; nueva_cantidad: float; nuevo_precio: float; pin_autorizacion: str
 class PinReq(BaseModel): nuevo_pin: str
+class TrasladarReq(BaseModel): hab_origen: str; hab_destino: str; paciente_id: int
+class RecobrarReq(BaseModel): paciente_id: int; hab_destino: str
 
 def natural_sort_key(hab):
     orden_tipo = {"Habitación": 1, "Suite": 2, "Incubadora": 3, "Urgencias": 4, "Consultorio": 5}
@@ -138,6 +138,7 @@ def editar_paciente(req: EditPacReq):
         client.execute("UPDATE pacientes SET nombre=?, edad=?, medico=?, fecha_ingreso=? WHERE id=?", 
                        [req.nombre.strip(), req.edad.strip(), req.medico.strip(), req.fecha_ingreso, req.id_paciente])
     return {"status": "ok"}
+
 @app.post("/liberar-habitacion/{numero}")
 def liberar(numero: str):
     with get_db() as client:
@@ -146,6 +147,29 @@ def liberar(numero: str):
             fecha_egreso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             client.execute("UPDATE pacientes SET fecha_egreso=? WHERE id=?", [fecha_egreso, rs.rows[0][0]])
         client.execute("UPDATE habitaciones SET estado='LIBRE', paciente_id=NULL WHERE numero=?", [numero])
+    return {"status": "ok"}
+
+# --- NUEVAS FUNCIONALIDADES: TRASLADAR Y RECOBRAR ---
+@app.post("/trasladar-paciente")
+def trasladar_paciente(req: TrasladarReq):
+    with get_db() as client:
+        rs = client.execute("SELECT estado FROM habitaciones WHERE numero=?", [req.hab_destino])
+        if not rs.rows or rs.rows[0][0] == 'OCUPADA':
+            raise HTTPException(status_code=400, detail="Habitación destino no disponible")
+        
+        client.execute("UPDATE habitaciones SET estado='LIBRE', paciente_id=NULL WHERE numero=?", [req.hab_origen])
+        client.execute("UPDATE habitaciones SET estado='OCUPADA', paciente_id=? WHERE numero=?", [req.paciente_id, req.hab_destino])
+    return {"status": "ok"}
+
+@app.post("/recobrar-paciente")
+def recobrar_paciente(req: RecobrarReq):
+    with get_db() as client:
+        rs = client.execute("SELECT estado FROM habitaciones WHERE numero=?", [req.hab_destino])
+        if not rs.rows or rs.rows[0][0] == 'OCUPADA':
+            raise HTTPException(status_code=400, detail="Habitación destino no disponible")
+        
+        client.execute("UPDATE pacientes SET fecha_egreso=NULL WHERE id=?", [req.paciente_id])
+        client.execute("UPDATE habitaciones SET estado='OCUPADA', paciente_id=? WHERE numero=?", [req.paciente_id, req.hab_destino])
     return {"status": "ok"}
 
 @app.get("/catalogo-medicamentos")
@@ -243,7 +267,7 @@ def estadisticas():
             tiempo_str = f"{dias_completos} días, {horas_restantes} hrs"
             
             lista_historial.append({
-                "nombre": p[1], "edad": p[2], "medico": p[3], "ingreso": ingreso.split(" ")[0],
+                "id": p[0], "nombre": p[1], "edad": p[2], "medico": p[3], "ingreso": ingreso.split(" ")[0],
                 "tiempo": tiempo_str, "dias_fact": dias_a_graficar, "estado": estado
             })
         except: pass 
@@ -260,7 +284,6 @@ def estadisticas():
         "historial": lista_historial
     }
 
-# --- RUTA MÁGICA PARA MIGRAR DATOS ---
 @app.get("/migrar-nube")
 def migrar_nube():
     if not os.path.exists(LOCAL_DB_PATH):
